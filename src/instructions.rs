@@ -1,14 +1,15 @@
 #[derive(Debug)]
 pub enum INSTRUCTIONS {
-    JMP(usize),
     SWP,
     SAV,
     MOV(LOCATION, LOCATION),
-    JEZ(usize),
-    JLZ(usize),
-    JGZ(usize),
+    JMP(String),
+    JEZ(String),
+    JLZ(String),
+    JGZ(String),
     ADD(i16),
-    SUB(i16)
+    SUB(i16),
+    IGNORE
 }
 
 #[derive(Debug, PartialEq)]
