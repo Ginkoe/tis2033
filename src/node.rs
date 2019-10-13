@@ -4,12 +4,12 @@ use termion::{color, style};
 
 use std::io;
 
-#[derive(Debug)]
 pub struct Node {
     acc: i16,
     bak: i16,
     pointer: usize,
     instructions: Vec<INSTRUCTIONS>,
+    memory: [i16; 256],
 }
 
 const NULL_VALUE: i16 = 0;
@@ -21,6 +21,15 @@ impl Node {
             bak: 0,
             pointer: 0,
             instructions: Vec::new(),
+            memory: [0; 256],
+        }
+    }
+
+    fn jmp(instructions: &Vec<INSTRUCTIONS>, jump_point: usize, pointer: &mut usize) {
+        if jump_point > instructions.len() - 1 {
+            panic!("Error: OUT OF SCOPE")
+        } else {
+            *pointer = jump_point;
         }
     }
 
@@ -28,50 +37,6 @@ impl Node {
         let temp_bak = self.bak;
         self.bak = self.acc;
         self.acc = temp_bak;
-    }
-
-    fn jmp(&mut self, jmp_point: usize) {
-        if self.instructions.len() < jmp_point {
-            println!(
-                "Out of scope, cannot access {} :: {}",
-                jmp_point, self.pointer
-            );
-        } else {
-            self.pointer = jmp_point;
-        }
-    }
-
-    fn jez(&mut self, jmp_point: usize) {
-        if self.instructions.len() < jmp_point {
-            println!(
-                "Out of scope, cannot access {} :: {}",
-                jmp_point, self.pointer
-            );
-        } else if self.acc == 0 {
-            self.pointer = jmp_point
-        }
-    }
-
-    fn jlz(&mut self, jmp_point: usize) {
-        if self.instructions.len() < jmp_point {
-            println!(
-                "Out of scope, cannot access {} :: {}",
-                jmp_point, self.pointer
-            );
-        } else if self.acc < 0 {
-            self.pointer = jmp_point
-        }
-    }
-
-    fn jgz(&mut self, jmp_point: usize) {
-        if self.instructions.len() < jmp_point {
-            println!(
-                "Out of scope, cannot access {} :: {}",
-                jmp_point, self.pointer
-            );
-        } else if self.acc > 0 {
-            self.pointer = jmp_point
-        }
     }
 
     fn add(acc: &mut i16, value: &i16) {
@@ -82,6 +47,14 @@ impl Node {
         }
     }
 
+    fn sub(acc: &mut i16, value: &i16) {
+        if *acc - value <= std::i16::MIN {
+            println!("Overflow");
+        } else {
+            *acc -= value;
+        }
+    }
+
     fn mov(src: i16, dest: &mut i16) {
         *dest = src;
     }
@@ -89,6 +62,7 @@ impl Node {
 
     pub fn load(&mut self, raw_instructions: String) {
         for line in raw_instructions.lines() {
+            
             let mut frag = line.split_whitespace();
             match frag.nth(0).unwrap() {
                 "JMP" => match frag.next() {
@@ -99,8 +73,39 @@ impl Node {
                             Err(err) => println!("Jump point could not be reached"),
                         }
                     }
-                    None => println!("No Jump Destination has been provided"),
+                    None => panic!("Error: No Jump Destination has been provided"),
                 },
+                "JEZ" => match frag.next() {
+                    Some(jmp_point) => {
+                        let parsed_point = jmp_point.parse::<usize>();
+                        match parsed_point {
+                            Ok(point) => self.instructions.push(INSTRUCTIONS::JEZ(point)),
+                            Err(err) => println!("Jump point could not be reached"),
+                        }
+                    }
+                    None => panic!("Error: No Jump Destination has been provided"),
+                },
+                "JGZ" => match frag.next() {
+                    Some(jmp_point) => {
+                        let parsed_point = jmp_point.parse::<usize>();
+                        match parsed_point {
+                            Ok(point) => self.instructions.push(INSTRUCTIONS::JGZ(point)),
+                            Err(err) => println!("Jump point could not be reached"),
+                        }
+                    }
+                    None => panic!("Error: No Jump Destination has been provided"),
+                },
+                "JLP" => match frag.next() {
+                    Some(jmp_point) => {
+                        let parsed_point = jmp_point.parse::<usize>();
+                        match parsed_point {
+                            Ok(point) => self.instructions.push(INSTRUCTIONS::JLZ(point)),
+                            Err(err) => println!("Jump point could not be reached"),
+                        }
+                    }
+                    None => panic!("Error: No Jump Destination has been provided"),
+                },
+
                 "MOV" => match frag.next() {
                     Some(src) => {
                         let source = match src {
@@ -109,23 +114,43 @@ impl Node {
                             // ...
                             _ => match src.parse::<i16>() {
                                 Ok(value) => LOCATION::VALUE(value),
-                                Err(err) => {
-                                    panic!("Error: Could not parse value source");
+                                Err(_) => {
+                                    if &src[0..1] == "$" {
+                                        match &src[1..].parse::<u8>() {
+                                            Ok(value) => LOCATION::REGISTER(*value),
+                                            Err(_) => panic!("Error: Unknown Register"),
+                                        }
+                                    } else {
+                                        panic!("Error: Could not parse value source");
+                                    }
                                 }
                             },
                         };
 
                         let dest = match frag.next() {
-                            Some(dest) => match dest {
+                            Some(raw_dest) => match raw_dest {
                                 "ACC" => LOCATION::ACC,
                                 "DISPLAY" => LOCATION::DISPLAY,
-                                _ => {
-                                    panic!("Error: Could not parse value SOURCE");
-                                }
+                                _ => match raw_dest.parse::<i16>() {
+                                    Ok(_) => panic!("Error: Cannot pass value to value"),
+                                    Err(_) => {
+                                        if &raw_dest[0..1] == "$" {
+                                            println!("{}", &raw_dest[1..]);
+                                            match &raw_dest[1..].parse::<u8>() {
+                                                Ok(value) => LOCATION::REGISTER(*value),
+                                                Err(_) => panic!("Error: Unknown register"),
+                                            }
+                                        } else {
+                                            panic!("Error: Could not parse DEST")
+                                        }
+                                    }
+                                },
                             },
                             None => panic!("Error: Could not find MOV Dest"),
                         };
-
+                        if source == dest {
+                            panic!("Error: MOV from to same LOCATION")
+                        }
                         self.instructions.push(INSTRUCTIONS::MOV(source, dest))
                     }
 
@@ -141,7 +166,19 @@ impl Node {
                             Err(err) => println!("Incorect add value"),
                         }
                     }
-                    None => println!("No value has been provided"),
+                    None => panic!("No value has been provided"),
+                },
+                "SUB" => match frag.next() {
+                    Some(raw_value) => {
+                        let parsed_value = raw_value.parse::<i16>();
+                        match parsed_value {
+                            Ok(value) => {
+                                self.instructions.push(INSTRUCTIONS::SUB(value));
+                            }
+                            Err(err) => println!("Incorect add value"),
+                        }
+                    }
+                    None => panic!("No value has been provided"),
                 },
                 _ => println!("UNKNOWN INSTRUCTION"),
             }
@@ -158,6 +195,7 @@ impl Node {
                 }
                 match instruction {
                     INSTRUCTIONS::ADD(data) => Node::add(&mut self.acc, data),
+                    INSTRUCTIONS::SUB(data) => Node::sub(&mut self.acc, data),
                     INSTRUCTIONS::MOV(src, dest) => {
                         let src_ref: i16;
                         src_ref = match src {
@@ -171,9 +209,24 @@ impl Node {
                             LOCATION::ACC => Node::mov(src_ref, &mut self.acc),
                             _ => {}
                         }
-                    },
+                    }
                     INSTRUCTIONS::JMP(pointer) => {
-                        self.pointer = *pointer;
+                        Node::jmp(&self.instructions, *pointer, &mut self.pointer)
+                    }
+                    INSTRUCTIONS::JEZ(pointer) => {
+                        if self.acc == 0 {
+                            Node::jmp(&self.instructions, *pointer, &mut self.pointer)
+                        }
+                    }
+                    INSTRUCTIONS::JGZ(pointer) => {
+                        if self.acc > 0 {
+                            Node::jmp(&self.instructions, *pointer, &mut self.pointer)
+                        }
+                    }
+                    INSTRUCTIONS::JLZ(pointer) => {
+                        if self.acc < 0 {
+                            Node::jmp(&self.instructions, *pointer, &mut self.pointer)
+                        }
                     }
                     _ => println!("PANIC ! Unknown Instruction"),
                 }
@@ -183,11 +236,10 @@ impl Node {
     }
 
     pub fn run(&mut self) {
-        for i in 0..10 {
-            println!("{}{:?}", color::Fg(color::Red), self.instructions.get(self.pointer).unwrap());
-            println!("{}{:?}", color::Fg(color::Green), self);
-            print!("{}", color::Fg(color::White));
+        loop {
+            //println!("{} : {:?}", self.pointer, self.instructions);
             self.process();
+            std::thread::sleep(std::time::Duration::from_millis(200))
         }
     }
 }

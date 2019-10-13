@@ -8,16 +8,17 @@ pub enum INSTRUCTIONS {
     JLZ(usize),
     JGZ(usize),
     ADD(i16),
+    SUB(i16)
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LOCATION {
     VALUE(i16),
     RIGHT,
     LEFT,
     DOWN,
     UP,
-    REGISTER(usize),
+    REGISTER(u8),
     ACC,
     DISPLAY
 }
